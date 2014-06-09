@@ -45,7 +45,7 @@ static void hci_cc_inquiry_cancel(struct hci_dev *hdev, struct sk_buff *skb)
 		return;
 
 	clear_bit(HCI_INQUIRY, &hdev->flags);
-	smp_mb__after_clear_bit(); /* wake_up_bit advises about this barrier */
+	smp_mb__after_atomic(); /* wake_up_bit advises about this barrier */
 	wake_up_bit(&hdev->flags, HCI_INQUIRY);
 
 	hci_conn_check_pending(hdev);
@@ -1768,7 +1768,7 @@ static void hci_inquiry_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	if (!test_and_clear_bit(HCI_INQUIRY, &hdev->flags))
 		return;
 
-	smp_mb__after_clear_bit(); /* wake_up_bit advises about this barrier */
+	smp_mb__after_atomic(); /* wake_up_bit advises about this barrier */
 	wake_up_bit(&hdev->flags, HCI_INQUIRY);
 
 	if (!test_bit(HCI_MGMT, &hdev->dev_flags))
@@ -3328,6 +3328,12 @@ static void hci_key_refresh_complete_evt(struct hci_dev *hdev,
 
 	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
 	if (!conn)
+		goto unlock;
+
+	/* For BR/EDR the necessary steps are taken through the
+	 * auth_complete event.
+	 */
+	if (conn->type != LE_LINK)
 		goto unlock;
 
 	if (!ev->status)

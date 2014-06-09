@@ -254,7 +254,7 @@ struct sock_xprt {
 	/*
 	 * Saved socket callback addresses
 	 */
-	void			(*old_data_ready)(struct sock *, int);
+	void			(*old_data_ready)(struct sock *);
 	void			(*old_state_change)(struct sock *);
 	void			(*old_write_space)(struct sock *);
 	void			(*old_error_report)(struct sock *);
@@ -893,11 +893,11 @@ static void xs_close(struct rpc_xprt *xprt)
 	xs_reset_transport(transport);
 	xprt->reestablish_timeout = 0;
 
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	clear_bit(XPRT_CONNECTION_ABORT, &xprt->state);
 	clear_bit(XPRT_CLOSE_WAIT, &xprt->state);
 	clear_bit(XPRT_CLOSING, &xprt->state);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 	xprt_disconnect_done(xprt);
 }
 
@@ -951,7 +951,7 @@ static int xs_local_copy_to_xdr(struct xdr_buf *xdr, struct sk_buff *skb)
  *
  * Currently this assumes we can read the whole reply in a single gulp.
  */
-static void xs_local_data_ready(struct sock *sk, int len)
+static void xs_local_data_ready(struct sock *sk)
 {
 	struct rpc_task *task;
 	struct rpc_xprt *xprt;
@@ -1014,7 +1014,7 @@ static void xs_local_data_ready(struct sock *sk, int len)
  * @len: how much data to read
  *
  */
-static void xs_udp_data_ready(struct sock *sk, int len)
+static void xs_udp_data_ready(struct sock *sk)
 {
 	struct rpc_task *task;
 	struct rpc_xprt *xprt;
@@ -1437,7 +1437,7 @@ static int xs_tcp_data_recv(read_descriptor_t *rd_desc, struct sk_buff *skb, uns
  * @bytes: how much data to read
  *
  */
-static void xs_tcp_data_ready(struct sock *sk, int bytes)
+static void xs_tcp_data_ready(struct sock *sk)
 {
 	struct rpc_xprt *xprt;
 	read_descriptor_t rd_desc;
@@ -1497,12 +1497,12 @@ static void xs_tcp_cancel_linger_timeout(struct rpc_xprt *xprt)
 
 static void xs_sock_reset_connection_flags(struct rpc_xprt *xprt)
 {
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	clear_bit(XPRT_CONNECTION_ABORT, &xprt->state);
 	clear_bit(XPRT_CONNECTION_CLOSE, &xprt->state);
 	clear_bit(XPRT_CLOSE_WAIT, &xprt->state);
 	clear_bit(XPRT_CLOSING, &xprt->state);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 }
 
 static void xs_sock_mark_closed(struct rpc_xprt *xprt)
@@ -1556,10 +1556,10 @@ static void xs_tcp_state_change(struct sock *sk)
 		xprt->connect_cookie++;
 		xprt->reestablish_timeout = 0;
 		set_bit(XPRT_CLOSING, &xprt->state);
-		smp_mb__before_clear_bit();
+		smp_mb__before_atomic();
 		clear_bit(XPRT_CONNECTED, &xprt->state);
 		clear_bit(XPRT_CLOSE_WAIT, &xprt->state);
-		smp_mb__after_clear_bit();
+		smp_mb__after_atomic();
 		xs_tcp_schedule_linger_timeout(xprt, xs_tcp_fin_timeout);
 		break;
 	case TCP_CLOSE_WAIT:
@@ -1578,9 +1578,9 @@ static void xs_tcp_state_change(struct sock *sk)
 	case TCP_LAST_ACK:
 		set_bit(XPRT_CLOSING, &xprt->state);
 		xs_tcp_schedule_linger_timeout(xprt, xs_tcp_fin_timeout);
-		smp_mb__before_clear_bit();
+		smp_mb__before_atomic();
 		clear_bit(XPRT_CONNECTED, &xprt->state);
-		smp_mb__after_clear_bit();
+		smp_mb__after_atomic();
 		break;
 	case TCP_CLOSE:
 		xs_tcp_cancel_linger_timeout(xprt);

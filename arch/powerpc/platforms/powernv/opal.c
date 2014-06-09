@@ -61,7 +61,7 @@ int __init early_init_dt_scan_opal(unsigned long node,
 				   const char *uname, int depth, void *data)
 {
 	const void *basep, *entryp, *sizep;
-	unsigned long basesz, entrysz, runtimesz;
+	int basesz, entrysz, runtimesz;
 
 	if (depth != 1 || strcmp(uname, "ibm,opal") != 0)
 		return 0;
@@ -77,11 +77,11 @@ int __init early_init_dt_scan_opal(unsigned long node,
 	opal.entry = of_read_number(entryp, entrysz/4);
 	opal.size = of_read_number(sizep, runtimesz/4);
 
-	pr_debug("OPAL Base  = 0x%llx (basep=%p basesz=%ld)\n",
+	pr_debug("OPAL Base  = 0x%llx (basep=%p basesz=%d)\n",
 		 opal.base, basep, basesz);
-	pr_debug("OPAL Entry = 0x%llx (entryp=%p basesz=%ld)\n",
+	pr_debug("OPAL Entry = 0x%llx (entryp=%p basesz=%d)\n",
 		 opal.entry, entryp, entrysz);
-	pr_debug("OPAL Entry = 0x%llx (sizep=%p runtimesz=%ld)\n",
+	pr_debug("OPAL Entry = 0x%llx (sizep=%p runtimesz=%d)\n",
 		 opal.size, sizep, runtimesz);
 
 	powerpc_firmware_features |= FW_FEATURE_OPAL;
@@ -102,7 +102,7 @@ int __init early_init_dt_scan_opal(unsigned long node,
 int __init early_init_dt_scan_recoverable_ranges(unsigned long node,
 				   const char *uname, int depth, void *data)
 {
-	unsigned long i, psize, size;
+	int i, psize, size;
 	const __be32 *prop;
 
 	if (depth != 1 || strcmp(uname, "ibm,opal") != 0)
@@ -242,14 +242,14 @@ void opal_notifier_update_evt(uint64_t evt_mask,
 void opal_notifier_enable(void)
 {
 	int64_t rc;
-	uint64_t evt = 0;
+	__be64 evt = 0;
 
 	atomic_set(&opal_notifier_hold, 0);
 
 	/* Process pending events */
 	rc = opal_poll_events(&evt);
 	if (rc == OPAL_SUCCESS && evt)
-		opal_do_notifier(evt);
+		opal_do_notifier(be64_to_cpu(evt));
 }
 
 void opal_notifier_disable(void)
@@ -359,7 +359,7 @@ int opal_get_chars(uint32_t vtermno, char *buf, int count)
 	if ((be64_to_cpu(evt) & OPAL_EVENT_CONSOLE_INPUT) == 0)
 		return 0;
 	len = cpu_to_be64(count);
-	rc = opal_console_read(vtermno, &len, buf);	
+	rc = opal_console_read(vtermno, &len, buf);
 	if (rc == OPAL_SUCCESS)
 		return be64_to_cpu(len);
 	return 0;
@@ -529,7 +529,7 @@ static irqreturn_t opal_interrupt(int irq, void *data)
 
 	opal_handle_interrupt(virq_to_hw(irq), &events);
 
-	opal_do_notifier(events);
+	opal_do_notifier(be64_to_cpu(events));
 
 	return IRQ_HANDLED;
 }
@@ -638,3 +638,66 @@ void opal_shutdown(void)
 
 /* Export this so that test modules can use it */
 EXPORT_SYMBOL_GPL(opal_invalid_call);
+
+/* Convert a region of vmalloc memory to an opal sg list */
+struct opal_sg_list *opal_vmalloc_to_sg_list(void *vmalloc_addr,
+					     unsigned long vmalloc_size)
+{
+	struct opal_sg_list *sg, *first = NULL;
+	unsigned long i = 0;
+
+	sg = kzalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!sg)
+		goto nomem;
+
+	first = sg;
+
+	while (vmalloc_size > 0) {
+		uint64_t data = vmalloc_to_pfn(vmalloc_addr) << PAGE_SHIFT;
+		uint64_t length = min(vmalloc_size, PAGE_SIZE);
+
+		sg->entry[i].data = cpu_to_be64(data);
+		sg->entry[i].length = cpu_to_be64(length);
+		i++;
+
+		if (i >= SG_ENTRIES_PER_NODE) {
+			struct opal_sg_list *next;
+
+			next = kzalloc(PAGE_SIZE, GFP_KERNEL);
+			if (!next)
+				goto nomem;
+
+			sg->length = cpu_to_be64(
+					i * sizeof(struct opal_sg_entry) + 16);
+			i = 0;
+			sg->next = cpu_to_be64(__pa(next));
+			sg = next;
+		}
+
+		vmalloc_addr += length;
+		vmalloc_size -= length;
+	}
+
+	sg->length = cpu_to_be64(i * sizeof(struct opal_sg_entry) + 16);
+
+	return first;
+
+nomem:
+	pr_err("%s : Failed to allocate memory\n", __func__);
+	opal_free_sg_list(first);
+	return NULL;
+}
+
+void opal_free_sg_list(struct opal_sg_list *sg)
+{
+	while (sg) {
+		uint64_t next = be64_to_cpu(sg->next);
+
+		kfree(sg);
+
+		if (next)
+			sg = __va(next);
+		else
+			sg = NULL;
+	}
+}

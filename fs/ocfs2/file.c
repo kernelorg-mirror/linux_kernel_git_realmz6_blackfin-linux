@@ -828,7 +828,7 @@ static int ocfs2_write_zero_page(struct inode *inode, u64 abs_from,
 		/*
 		 * fs-writeback will release the dirty pages without page lock
 		 * whose offset are over inode size, the release happens at
-		 * block_write_full_page_endio().
+		 * block_write_full_page().
 		 */
 		i_size_write(inode, abs_to);
 		inode->i_blocks = ocfs2_inode_sector_count(inode);
@@ -2367,15 +2367,18 @@ relock:
 
 	if (direct_io) {
 		written = generic_file_direct_write(iocb, iov, &nr_segs, *ppos,
-						    ppos, count, ocount);
+						    count, ocount);
 		if (written < 0) {
 			ret = written;
 			goto out_dio;
 		}
 	} else {
+		struct iov_iter from;
+		iov_iter_init(&from, iov, nr_segs, count, 0);
 		current->backing_dev_info = file->f_mapping->backing_dev_info;
-		written = generic_file_buffered_write(iocb, iov, nr_segs, *ppos,
-						      ppos, count, 0);
+		written = generic_perform_write(file, &from, *ppos);
+		if (likely(written >= 0))
+			iocb->ki_pos = *ppos + written;
 		current->backing_dev_info = NULL;
 	}
 

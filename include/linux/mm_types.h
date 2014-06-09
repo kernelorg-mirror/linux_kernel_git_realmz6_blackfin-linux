@@ -124,6 +124,8 @@ struct page {
 	union {
 		struct list_head lru;	/* Pageout list, eg. active_list
 					 * protected by zone->lru_lock !
+					 * Can be used as a generic list
+					 * by the page owner.
 					 */
 		struct {		/* slub per cpu partial pages */
 			struct page *next;	/* Next partial slab */
@@ -136,7 +138,6 @@ struct page {
 #endif
 		};
 
-		struct list_head list;	/* slobs list of pages */
 		struct slab *slab_page; /* slab fields */
 		struct rcu_head rcu_head;	/* Used by SLAB
 						 * when destroying via RCU
@@ -405,7 +406,7 @@ struct mm_struct {
 	spinlock_t			ioctx_lock;
 	struct kioctx_table __rcu	*ioctx_table;
 #endif
-#ifdef CONFIG_MM_OWNER
+#ifdef CONFIG_MEMCG
 	/*
 	 * "owner" points to a task that is regarded as the canonical
 	 * user/owner of this mm. All of the following must be true in
@@ -508,5 +509,11 @@ static inline void clear_tlb_flush_pending(struct mm_struct *mm)
 {
 }
 #endif
+
+struct vm_special_mapping
+{
+	const char *name;
+	struct page **pages;
+};
 
 #endif /* _LINUX_MM_TYPES_H */

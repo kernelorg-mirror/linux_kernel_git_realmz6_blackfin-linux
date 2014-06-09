@@ -2897,12 +2897,9 @@ static irqreturn_t i40e_intr(int irq, void *data)
 		u32 prttsyn_stat = rd32(hw, I40E_PRTTSYN_STAT_0);
 
 		if (prttsyn_stat & I40E_PRTTSYN_STAT_0_TXTIME_MASK) {
-			ena_mask &= ~I40E_PFINT_ICR0_ENA_TIMESYNC_MASK;
+			icr0 &= ~I40E_PFINT_ICR0_ENA_TIMESYNC_MASK;
 			i40e_ptp_tx_hwtstamp(pf);
-			prttsyn_stat &= ~I40E_PRTTSYN_STAT_0_TXTIME_MASK;
 		}
-
-		wr32(hw, I40E_PRTTSYN_STAT_0, prttsyn_stat);
 	}
 
 	/* If a critical error is pending we have no choice but to reset the
@@ -4271,6 +4268,14 @@ static int i40e_open(struct net_device *netdev)
 	if (err)
 		return err;
 
+	/* configure global TSO hardware offload settings */
+	wr32(&pf->hw, I40E_GLLAN_TSOMSK_F, be32_to_cpu(TCP_FLAG_PSH |
+						       TCP_FLAG_FIN) >> 16);
+	wr32(&pf->hw, I40E_GLLAN_TSOMSK_M, be32_to_cpu(TCP_FLAG_PSH |
+						       TCP_FLAG_FIN |
+						       TCP_FLAG_CWR) >> 16);
+	wr32(&pf->hw, I40E_GLLAN_TSOMSK_L, be32_to_cpu(TCP_FLAG_CWR) >> 16);
+
 #ifdef CONFIG_I40E_VXLAN
 	vxlan_get_rx_port(netdev);
 #endif
@@ -4671,7 +4676,7 @@ static void i40e_service_event_complete(struct i40e_pf *pf)
 	BUG_ON(!test_bit(__I40E_SERVICE_SCHED, &pf->state));
 
 	/* flush memory to make sure state is correct before next watchog */
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	clear_bit(__I40E_SERVICE_SCHED, &pf->state);
 }
 
@@ -6712,6 +6717,7 @@ static int i40e_config_netdev(struct i40e_vsi *vsi)
 			   NETIF_F_HW_VLAN_CTAG_FILTER |
 			   NETIF_F_IPV6_CSUM	       |
 			   NETIF_F_TSO		       |
+			   NETIF_F_TSO_ECN	       |
 			   NETIF_F_TSO6		       |
 			   NETIF_F_RXCSUM	       |
 			   NETIF_F_NTUPLE	       |

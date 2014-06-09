@@ -119,8 +119,10 @@ extern struct trace_event_functions exit_syscall_print_funcs;
 	static struct syscall_metadata __syscall_meta_##sname;		\
 	static struct ftrace_event_call __used				\
 	  event_enter_##sname = {					\
-		.name                   = "sys_enter"#sname,		\
 		.class			= &event_class_syscall_enter,	\
+		{							\
+			.name                   = "sys_enter"#sname,	\
+		},							\
 		.event.funcs            = &enter_syscall_print_funcs,	\
 		.data			= (void *)&__syscall_meta_##sname,\
 		.flags                  = TRACE_EVENT_FL_CAP_ANY,	\
@@ -133,8 +135,10 @@ extern struct trace_event_functions exit_syscall_print_funcs;
 	static struct syscall_metadata __syscall_meta_##sname;		\
 	static struct ftrace_event_call __used				\
 	  event_exit_##sname = {					\
-		.name                   = "sys_exit"#sname,		\
 		.class			= &event_class_syscall_exit,	\
+		{							\
+			.name                   = "sys_exit"#sname,	\
+		},							\
 		.event.funcs		= &exit_syscall_print_funcs,	\
 		.data			= (void *)&__syscall_meta_##sname,\
 		.flags                  = TRACE_EVENT_FL_CAP_ANY,	\
@@ -707,7 +711,7 @@ asmlinkage long sys_keyctl(int cmd, unsigned long arg2, unsigned long arg3,
 
 asmlinkage long sys_ioprio_set(int which, int who, int ioprio);
 asmlinkage long sys_ioprio_get(int which, int who);
-asmlinkage long sys_set_mempolicy(int mode, unsigned long __user *nmask,
+asmlinkage long sys_set_mempolicy(int mode, const unsigned long __user *nmask,
 				unsigned long maxnode);
 asmlinkage long sys_migrate_pages(pid_t pid, unsigned long maxnode,
 				const unsigned long __user *from,
@@ -719,7 +723,7 @@ asmlinkage long sys_move_pages(pid_t pid, unsigned long nr_pages,
 				int flags);
 asmlinkage long sys_mbind(unsigned long start, unsigned long len,
 				unsigned long mode,
-				unsigned long __user *nmask,
+				const unsigned long __user *nmask,
 				unsigned long maxnode,
 				unsigned flags);
 asmlinkage long sys_get_mempolicy(int __user *policy,
